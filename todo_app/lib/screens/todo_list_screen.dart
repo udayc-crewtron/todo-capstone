@@ -13,6 +13,7 @@ class TodoListScreen extends StatefulWidget {
 class _TodoListScreenState extends State<TodoListScreen> {
   List<Todo> todos = [];
   bool isLoading = true;
+  Map<String, bool> expandedCategories = {};
 
   @override
   void initState() {
@@ -26,6 +27,10 @@ class _TodoListScreenState extends State<TodoListScreen> {
     setState(() {
       todos = fetchedTodos;
       isLoading = false;
+      // Initialize all categories as expanded
+      for (var todo in todos) {
+        expandedCategories[todo.category] = true;
+      }
     });
   }
 
@@ -53,8 +58,57 @@ class _TodoListScreenState extends State<TodoListScreen> {
     );
   }
 
+  Map<String, List<Todo>> _groupTodosByCategory() {
+    final Map<String, List<Todo>> grouped = {};
+    for (var todo in todos) {
+      final category = todo.category;
+      if (!grouped.containsKey(category)) {
+        grouped[category] = [];
+      }
+      grouped[category]!.add(todo);
+    }
+    return grouped;
+  }
+
+  IconData _getCategoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'vacation':
+        return Icons.flight_takeoff;
+      case 'life goals':
+        return Icons.flag;
+      case 'work':
+        return Icons.work;
+      case 'shopping':
+        return Icons.shopping_cart;
+      case 'health':
+        return Icons.fitness_center;
+      default:
+        return Icons.task_alt;
+    }
+  }
+
+  Color _getCategoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'vacation':
+        return Colors.orange;
+      case 'life goals':
+        return Colors.purple;
+      case 'work':
+        return Colors.blue;
+      case 'shopping':
+        return Colors.green;
+      case 'health':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final groupedTodos = _groupTodosByCategory();
+    final categories = groupedTodos.keys.toList()..sort();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Todos'),
@@ -91,38 +145,103 @@ class _TodoListScreenState extends State<TodoListScreen> {
               : RefreshIndicator(
                   onRefresh: _loadTodos,
                   child: ListView.builder(
-                    itemCount: todos.length,
+                    itemCount: categories.length,
                     itemBuilder: (context, index) {
-                      final todo = todos[index];
-                      return Dismissible(
-                        key: Key(todo.todoId),
-                        background: Container(
-                          color: Colors.red,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          child: const Icon(Icons.delete, color: Colors.white),
-                        ),
-                        direction: DismissDirection.endToStart,
-                        onDismissed: (_) => _deleteTodo(todo),
-                        child: ListTile(
-                          leading: Checkbox(
-                            value: todo.done,
-                            onChanged: (_) => _toggleTodo(todo),
-                          ),
-                          title: Text(
-                            todo.title,
-                            style: TextStyle(
-                              decoration: todo.done
-                                  ? TextDecoration.lineThrough
-                                  : TextDecoration.none,
-                              color: todo.done ? Colors.grey : Colors.black,
+                      final category = categories[index];
+                      final categoryTodos = groupedTodos[category]!;
+                      final isExpanded = expandedCategories[category] ?? true;
+                      final categoryIcon = _getCategoryIcon(category);
+                      final categoryColor = _getCategoryColor(category);
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        child: Column(
+                          children: [
+                            // Category Header
+                            ListTile(
+                              leading: Icon(categoryIcon, color: categoryColor),
+                              title: Text(
+                                category,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: categoryColor.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '${categoryTodos.length}',
+                                      style: TextStyle(
+                                        color: categoryColor,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(
+                                      isExpanded
+                                          ? Icons.expand_less
+                                          : Icons.expand_more,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        expandedCategories[category] =
+                                            !isExpanded;
+                                      });
+                                    },
+                                  ),
+                                ],
+                              ),
+                              tileColor: categoryColor.withOpacity(0.05),
                             ),
-                          ),
-                          subtitle: Text(
-                            _formatDate(todo.createdAt),
-                            style: TextStyle(
-                                fontSize: 12, color: Colors.grey[600]),
-                          ),
+                            // Category Items
+                            if (isExpanded)
+                              ...categoryTodos.map((todo) {
+                                return Dismissible(
+                                  key: Key(todo.todoId),
+                                  background: Container(
+                                    color: Colors.red,
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    child: const Icon(Icons.delete,
+                                        color: Colors.white),
+                                  ),
+                                  direction: DismissDirection.endToStart,
+                                  onDismissed: (_) => _deleteTodo(todo),
+                                  child: ListTile(
+                                    leading: Checkbox(
+                                      value: todo.done,
+                                      onChanged: (_) => _toggleTodo(todo),
+                                    ),
+                                    title: Text(
+                                      todo.title,
+                                      style: TextStyle(
+                                        decoration: todo.done
+                                            ? TextDecoration.lineThrough
+                                            : TextDecoration.none,
+                                        color: todo.done
+                                            ? Colors.grey
+                                            : Colors.black,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      _formatDate(todo.createdAt),
+                                      style: TextStyle(
+                                          fontSize: 12, color: Colors.grey[600]),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                          ],
                         ),
                       );
                     },

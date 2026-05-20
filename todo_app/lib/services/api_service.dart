@@ -29,7 +29,7 @@ class ApiService {
     }
   }
 
-  static Future<bool> createTodo(String title) async {
+  static Future<bool> createTodo(String title, {String category = 'General'}) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/todos'),
@@ -37,7 +37,7 @@ class ApiService {
           'X-User-Id': userId,
           'Content-Type': 'application/json',
         },
-        body: json.encode({'title': title}),
+        body: json.encode({'title': title, 'category': category}),
       );
 
       return response.statusCode == 201;

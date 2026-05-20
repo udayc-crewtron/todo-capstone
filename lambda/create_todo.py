@@ -26,6 +26,7 @@ def handler(event, context):
         # Parse request body (JSON string → Python dict)
         body = json.loads(event.get('body', '{}'))
         title = body.get('title', '').strip()
+        category = body.get('category', 'General').strip()  # Default to 'General'
 
         # Validate input
         if not title:
@@ -42,6 +43,7 @@ def handler(event, context):
             'todoId': todo_id,
             'title': title,
             'done': False,
+            'category': category,  # Add category field
             'createdAt': created_at
         }
 
