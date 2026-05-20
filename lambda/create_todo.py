@@ -27,6 +27,7 @@ def handler(event, context):
         body = json.loads(event.get('body', '{}'))
         title = body.get('title', '').strip()
         category = body.get('category', 'General').strip()  # Default to 'General'
+        deadline = body.get('deadline')  # Optional deadline timestamp
 
         # Validate input
         if not title:
@@ -46,6 +47,10 @@ def handler(event, context):
             'category': category,  # Add category field
             'createdAt': created_at
         }
+
+        # Add deadline if provided
+        if deadline:
+            todo['deadline'] = deadline
 
         # Save to DynamoDB
         table.put_item(Item=todo)

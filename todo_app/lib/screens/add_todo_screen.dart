@@ -12,8 +12,11 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
   final _controller = TextEditingController();
   bool _isLoading = false;
   String _selectedCategory = 'General';
+  DateTime? _selectedDeadline;
+  TimeOfDay? _selectedTime;
 
   final List<Map<String, dynamic>> _categories = [
+    {'name': 'Very Important', 'icon': Icons.priority_high, 'color': Colors.red[700]},
     {'name': 'General', 'icon': Icons.task_alt, 'color': Colors.grey},
     {'name': 'Vacation', 'icon': Icons.flight_takeoff, 'color': Colors.orange},
     {'name': 'Life Goals', 'icon': Icons.flag, 'color': Colors.purple},
@@ -26,6 +29,51 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDateTime() async {
+    // Pick date
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+
+    if (date == null) return;
+
+    // Pick time
+    if (mounted) {
+      final time = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+      );
+
+      if (time == null) return;
+
+      setState(() {
+        _selectedDeadline = date;
+        _selectedTime = time;
+      });
+    }
+  }
+
+  void _clearDeadline() {
+    setState(() {
+      _selectedDeadline = null;
+      _selectedTime = null;
+    });
+  }
+
+  DateTime? _getCombinedDateTime() {
+    if (_selectedDeadline == null || _selectedTime == null) return null;
+    return DateTime(
+      _selectedDeadline!.year,
+      _selectedDeadline!.month,
+      _selectedDeadline!.day,
+      _selectedTime!.hour,
+      _selectedTime!.minute,
+    );
   }
 
   Future<void> _addTodo() async {
@@ -41,9 +89,25 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
       return;
     }
 
+    // Very Important category requires deadline
+    if (_selectedCategory == 'Very Important' && _selectedDeadline == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Very Important todos require a deadline!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
-    final success = await ApiService.createTodo(title, category: _selectedCategory);
+    final deadline = _getCombinedDateTime()?.millisecondsSinceEpoch;
+    final success = await ApiService.createTodo(
+      title,
+      category: _selectedCategory,
+      deadline: deadline,
+    );
 
     setState(() => _isLoading = false);
 
@@ -71,6 +135,8 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final combinedDateTime = _getCombinedDateTime();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Add Todo'),
@@ -134,6 +200,86 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
                 );
               }).toList(),
             ),
+            const SizedBox(height: 24),
+            // Deadline section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Deadline ${_selectedCategory == 'Very Important' ? '(Required)' : '(Optional)'}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: _selectedCategory == 'Very Important'
+                        ? Colors.red[700]
+                        : null,
+                  ),
+                ),
+                if (combinedDateTime != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: _clearDeadline,
+                    tooltip: 'Clear deadline',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _pickDateTime,
+              icon: Icon(
+                combinedDateTime != null ? Icons.edit_calendar : Icons.calendar_today,
+                color: _selectedCategory == 'Very Important'
+                    ? Colors.red[700]
+                    : Colors.blue,
+              ),
+              label: Text(
+                combinedDateTime != null
+                    ? '${combinedDateTime.day}/${combinedDateTime.month}/${combinedDateTime.year} at ${combinedDateTime.hour}:${combinedDateTime.minute.toString().padLeft(2, '0')}'
+                    : 'Set Deadline',
+                style: TextStyle(
+                  color: _selectedCategory == 'Very Important'
+                      ? Colors.red[700]
+                      : Colors.blue,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.all(16),
+                side: BorderSide(
+                  color: _selectedCategory == 'Very Important'
+                      ? Colors.red[700]!
+                      : Colors.blue,
+                  width: combinedDateTime != null ? 2 : 1,
+                ),
+              ),
+            ),
+            if (_selectedCategory == 'Very Important' && combinedDateTime != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red[700]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.red[700]),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You\'ll get "You Missed Again!" alert if deadline passes',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red[700],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: _isLoading ? null : _addTodo,

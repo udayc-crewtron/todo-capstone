@@ -29,15 +29,23 @@ class ApiService {
     }
   }
 
-  static Future<bool> createTodo(String title, {String category = 'General'}) async {
+  static Future<bool> createTodo(String title, {String category = 'General', int? deadline}) async {
     try {
+      final Map<String, dynamic> body = {
+        'title': title,
+        'category': category,
+      };
+      if (deadline != null) {
+        body['deadline'] = deadline;
+      }
+
       final response = await http.post(
         Uri.parse('$baseUrl/todos'),
         headers: {
           'X-User-Id': userId,
           'Content-Type': 'application/json',
         },
-        body: json.encode({'title': title, 'category': category}),
+        body: json.encode(body),
       );
 
       return response.statusCode == 201;

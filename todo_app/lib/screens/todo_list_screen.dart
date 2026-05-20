@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/todo.dart';
 import '../services/api_service.dart';
@@ -14,11 +15,65 @@ class _TodoListScreenState extends State<TodoListScreen> {
   List<Todo> todos = [];
   bool isLoading = true;
   Map<String, bool> expandedCategories = {};
+  Timer? _timer;
+  Set<String> _shownAlerts = {}; // Track shown alerts
 
   @override
   void initState() {
     super.initState();
     _loadTodos();
+    // Update timer every second
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _checkOverdueTodos();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _checkOverdueTodos() {
+    for (var todo in todos) {
+      if (todo.isOverdue && !_shownAlerts.contains(todo.todoId)) {
+        _shownAlerts.add(todo.todoId);
+        _showMissedAlert(todo);
+      }
+    }
+  }
+
+  void _showMissedAlert(Todo todo) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.red[50],
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red[700], size: 32),
+            const SizedBox(width: 12),
+            const Text(
+              'You Missed Again!',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          '"${todo.title}" deadline has passed!',
+          style: const TextStyle(fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK', style: TextStyle(fontSize: 16)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadTodos() async {
@@ -46,6 +101,7 @@ class _TodoListScreenState extends State<TodoListScreen> {
   Future<void> _deleteTodo(Todo todo) async {
     final success = await ApiService.deleteTodo(todo.todoId);
     if (success) {
+      _shownAlerts.remove(todo.todoId); // Remove from shown alerts
       _loadTodos();
     } else {
       _showError('Failed to delete todo');
@@ -72,6 +128,8 @@ class _TodoListScreenState extends State<TodoListScreen> {
 
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
+      case 'very important':
+        return Icons.priority_high;
       case 'vacation':
         return Icons.flight_takeoff;
       case 'life goals':
@@ -89,6 +147,8 @@ class _TodoListScreenState extends State<TodoListScreen> {
 
   Color _getCategoryColor(String category) {
     switch (category.toLowerCase()) {
+      case 'very important':
+        return Colors.red[700]!;
       case 'vacation':
         return Colors.orange;
       case 'life goals':
@@ -104,10 +164,30 @@ class _TodoListScreenState extends State<TodoListScreen> {
     }
   }
 
+  String _formatCountdown(int seconds) {
+    if (seconds <= 0) return 'OVERDUE!';
+
+    final duration = Duration(seconds: seconds);
+    if (duration.inDays > 0) {
+      return '${duration.inDays}d ${duration.inHours % 24}h';
+    } else if (duration.inHours > 0) {
+      return '${duration.inHours}h ${duration.inMinutes % 60}m';
+    } else if (duration.inMinutes > 0) {
+      return '${duration.inMinutes}m ${duration.inSeconds % 60}s';
+    } else {
+      return '${duration.inSeconds}s';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final groupedTodos = _groupTodosByCategory();
-    final categories = groupedTodos.keys.toList()..sort();
+    final categories = groupedTodos.keys.toList()..sort((a, b) {
+      // Very Important always first
+      if (a.toLowerCase() == 'very important') return -1;
+      if (b.toLowerCase() == 'very important') return 1;
+      return a.compareTo(b);
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -156,16 +236,20 @@ class _TodoListScreenState extends State<TodoListScreen> {
                       return Card(
                         margin: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 4),
+                        elevation: category.toLowerCase() == 'very important' ? 4 : 1,
                         child: Column(
                           children: [
                             // Category Header
                             ListTile(
-                              leading: Icon(categoryIcon, color: categoryColor),
+                              leading: Icon(categoryIcon, color: categoryColor, size: 28),
                               title: Text(
                                 category,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                                  fontSize: category.toLowerCase() == 'very important' ? 18 : 16,
+                                  color: category.toLowerCase() == 'very important'
+                                    ? Colors.red[700]
+                                    : null,
                                 ),
                               ),
                               trailing: Row(
@@ -206,6 +290,10 @@ class _TodoListScreenState extends State<TodoListScreen> {
                             // Category Items
                             if (isExpanded)
                               ...categoryTodos.map((todo) {
+                                final hasDeadline = todo.deadline != null;
+                                final timeLeft = todo.timeRemaining;
+                                final isOverdue = todo.isOverdue;
+
                                 return Dismissible(
                                   key: Key(todo.todoId),
                                   background: Container(
@@ -230,13 +318,66 @@ class _TodoListScreenState extends State<TodoListScreen> {
                                             : TextDecoration.none,
                                         color: todo.done
                                             ? Colors.grey
-                                            : Colors.black,
+                                            : isOverdue
+                                                ? Colors.red[700]
+                                                : Colors.black,
+                                        fontWeight: isOverdue
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
                                       ),
                                     ),
-                                    subtitle: Text(
-                                      _formatDate(todo.createdAt),
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.grey[600]),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _formatDate(todo.createdAt),
+                                          style: TextStyle(
+                                              fontSize: 12, color: Colors.grey[600]),
+                                        ),
+                                        if (hasDeadline && timeLeft != null && !todo.done)
+                                          Container(
+                                            margin: const EdgeInsets.only(top: 4),
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: isOverdue
+                                                  ? Colors.red[100]
+                                                  : timeLeft < 3600
+                                                      ? Colors.orange[100]
+                                                      : Colors.blue[100],
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  isOverdue
+                                                      ? Icons.error
+                                                      : Icons.timer,
+                                                  size: 16,
+                                                  color: isOverdue
+                                                      ? Colors.red[700]
+                                                      : timeLeft < 3600
+                                                          ? Colors.orange[700]
+                                                          : Colors.blue[700],
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  _formatCountdown(timeLeft),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isOverdue
+                                                        ? Colors.red[700]
+                                                        : timeLeft < 3600
+                                                            ? Colors.orange[700]
+                                                            : Colors.blue[700],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                                 );
